@@ -20,7 +20,7 @@ return new class extends Migration
             $table->string('status')->index();
             $table->string('source')->default('System')->index();
             $table->timestamp('scheduled_for')->nullable()->index();
-            $table->timestamp('event_at')->index();
+            $table->timestamp('event_at')->useCurrent()->index();
             $table->text('notes')->nullable();
             $table->timestamps();
         });

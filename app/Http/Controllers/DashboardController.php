@@ -62,6 +62,7 @@ class DashboardController extends Controller
 
         $recentTelemetry = SensorLog::query()
             ->whereIn('patient_id', $patientIds)
+            ->with(['patient:id,name'])
             ->orderByDesc('recorded_at')
             ->limit(24)
             ->get()
