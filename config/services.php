@@ -43,6 +43,10 @@ return [
         'client_id' => env('MQTT_CLIENT_ID', 'smart-dispenser-web'),
         'use_tls' => (bool) env('MQTT_USE_TLS', false),
         'clean_session' => (bool) env('MQTT_CLEAN_SESSION', true),
+        'topic_root' => env('MQTT_TOPIC_ROOT', 'smart-dispenser'),
+        'topic_telemetry_suffix' => env('MQTT_TOPIC_TELEMETRY_SUFFIX', 'events/telemetry'),
+        'topic_dose_log_suffix' => env('MQTT_TOPIC_DOSE_LOG_SUFFIX', 'events/dose-log'),
+        'topic_status_suffix' => env('MQTT_TOPIC_STATUS_SUFFIX', 'status'),
     ],
 
 ];

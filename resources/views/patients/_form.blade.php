@@ -1,5 +1,7 @@
 @php
     $isEdit = isset($patient);
+    $selectedDoctorIds = collect(old('doctor_ids', $doctorIds ?? []))->map(static fn ($id): int => (int) $id)->all();
+    $selectedCaregiverIds = collect(old('caregiver_ids', $caregiverIds ?? []))->map(static fn ($id): int => (int) $id)->all();
 @endphp
 
 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -45,28 +47,38 @@
 
 <div class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
     <div class="rounded-xl border border-slate-200 p-4">
-        <p class="text-sm font-semibold text-slate-700">Medici associati</p>
+        <p class="text-sm font-semibold text-slate-700">Dottore assegnato</p>
         <div class="mt-3 space-y-2">
-            @foreach ($doctors as $doctor)
-                <label class="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" name="doctor_ids[]" value="{{ $doctor->id }}"
-                        @checked(in_array($doctor->id, old('doctor_ids', $doctorIds ?? []), true))>
-                    {{ $doctor->name }}
-                </label>
-            @endforeach
+            @if ($canSelectDoctors)
+                @forelse ($doctors as $doctor)
+                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                        <input type="checkbox" name="doctor_ids[]" value="{{ $doctor->id }}"
+                            @checked(in_array($doctor->id, $selectedDoctorIds, true))>
+                        {{ $doctor->name }}
+                    </label>
+                @empty
+                    <p class="text-sm text-slate-500">Nessun dottore registrato.</p>
+                @endforelse
+            @else
+                <p class="text-sm text-slate-600">
+                    Il paziente verra assegnato automaticamente al medico che sta creando/modificando la scheda.
+                </p>
+            @endif
         </div>
     </div>
 
     <div class="rounded-xl border border-slate-200 p-4">
-        <p class="text-sm font-semibold text-slate-700">Familiari/Caregiver associati</p>
+        <p class="text-sm font-semibold text-slate-700">Familiari assegnati</p>
         <div class="mt-3 space-y-2">
-            @foreach ($caregivers as $caregiver)
+            @forelse ($caregivers as $caregiver)
                 <label class="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" name="caregiver_ids[]" value="{{ $caregiver->id }}"
-                        @checked(in_array($caregiver->id, old('caregiver_ids', $caregiverIds ?? []), true))>
-                    {{ $caregiver->name }}
+                        @checked(in_array($caregiver->id, $selectedCaregiverIds, true))>
+                    <span>{{ $caregiver->name }} <span class="text-xs text-slate-500">({{ $caregiver->email }})</span></span>
                 </label>
-            @endforeach
+            @empty
+                <p class="text-sm text-slate-500">Nessun familiare registrato. Creane uno dalla sezione Gestione Utenti.</p>
+            @endforelse
         </div>
     </div>
 </div>

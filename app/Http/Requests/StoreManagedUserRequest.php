@@ -8,7 +8,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
-class StorePatientRequest extends FormRequest
+class StoreManagedUserRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -25,32 +25,19 @@ class StorePatientRequest extends FormRequest
      */
     public function rules(): array
     {
-        $isAdmin = $this->user()?->hasRole(UserRole::Admin) ?? false;
+        $allowedRoles = $this->user()?->hasRole(UserRole::Admin)
+            ? [UserRole::Doctor->value, UserRole::Caregiver->value]
+            : [UserRole::Caregiver->value];
 
         return [
+            'role' => ['required', 'string', Rule::in($allowedRoles)],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'confirmed', Password::min(8)],
             'phone' => ['nullable', 'string', 'max:30'],
             'address' => ['nullable', 'string', 'max:255'],
             'date_of_birth' => ['nullable', 'date'],
-            'doctor_ids' => [
-                Rule::requiredIf($isAdmin),
-                Rule::prohibitedIf(! $isAdmin),
-                'array',
-                'min:1',
-            ],
-            'doctor_ids.*' => [
-                'integer',
-                'distinct',
-                Rule::exists('users', 'id')->where('role', UserRole::Doctor->value)->where('is_active', true),
-            ],
-            'caregiver_ids' => ['nullable', 'array'],
-            'caregiver_ids.*' => [
-                'integer',
-                'distinct',
-                Rule::exists('users', 'id')->where('role', UserRole::Caregiver->value)->where('is_active', true),
-            ],
+            'is_active' => ['nullable', 'boolean'],
         ];
     }
 
@@ -60,8 +47,9 @@ class StorePatientRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'doctor_ids' => 'dottore assegnato',
-            'caregiver_ids' => 'familiari assegnati',
+            'role' => 'ruolo',
+            'date_of_birth' => 'data di nascita',
+            'is_active' => 'stato account',
         ];
     }
 }

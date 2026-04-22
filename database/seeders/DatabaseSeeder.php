@@ -11,6 +11,7 @@ use App\Models\SensorLog;
 use App\Models\TherapyPlan;
 use App\Models\TherapyPlanSchedule;
 use App\Models\User;
+use App\UserRole;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -26,34 +27,81 @@ class DatabaseSeeder extends Seeder
             'password' => 'password',
         ]);
 
-        $doctor = User::factory()->doctor()->create([
-            'name' => 'Dr. Marco Rossi',
-            'email' => 'doctor@smartdispenser.local',
+        $doctors = collect([
+            ['name' => 'Dr. Marco Rossi', 'email' => 'doctor.marco@smartdispenser.local'],
+            ['name' => 'Dr.ssa Giulia Verdi', 'email' => 'doctor.giulia@smartdispenser.local'],
+            ['name' => 'Dr. Luca Neri', 'email' => 'doctor.luca@smartdispenser.local'],
+        ])->map(static fn (array $doctor): User => User::factory()->doctor()->create([
+            'name' => $doctor['name'],
+            'email' => $doctor['email'],
             'password' => 'password',
-        ]);
+        ]));
 
-        $caregiver = User::factory()->caregiver()->create([
-            'name' => 'Anna Bianchi',
-            'email' => 'caregiver@smartdispenser.local',
+        $caregivers = collect([
+            ['name' => 'Anna Bianchi', 'email' => 'caregiver.anna@smartdispenser.local'],
+            ['name' => 'Paolo Bianchi', 'email' => 'caregiver.paolo@smartdispenser.local'],
+            ['name' => 'Sara Conti', 'email' => 'caregiver.sara@smartdispenser.local'],
+            ['name' => 'Marco Conti', 'email' => 'caregiver.marco@smartdispenser.local'],
+            ['name' => 'Elisa Ferri', 'email' => 'caregiver.elisa@smartdispenser.local'],
+        ])->map(static fn (array $caregiver): User => User::factory()->caregiver()->create([
+            'name' => $caregiver['name'],
+            'email' => $caregiver['email'],
             'password' => 'password',
-        ]);
+        ]));
 
-        $patients = User::factory()->patient()->count(3)->create();
+        $patients = collect([
+            ['name' => 'Mario Bianchi', 'email' => 'patient.mario@smartdispenser.local'],
+            ['name' => 'Lucia Conti', 'email' => 'patient.lucia@smartdispenser.local'],
+            ['name' => 'Giovanni Ferri', 'email' => 'patient.giovanni@smartdispenser.local'],
+        ])->map(static fn (array $patient): User => User::factory()->patient()->create([
+            'name' => $patient['name'],
+            'email' => $patient['email'],
+            'password' => 'password',
+        ]));
 
-        foreach ($patients as $patient) {
+        $careTeamMap = [
+            [
+                'patient' => $patients[0],
+                'doctor' => $doctors[0],
+                'caregivers' => [$caregivers[0], $caregivers[1]],
+            ],
+            [
+                'patient' => $patients[1],
+                'doctor' => $doctors[1],
+                'caregivers' => [$caregivers[2]],
+            ],
+            [
+                'patient' => $patients[2],
+                'doctor' => $doctors[1],
+                'caregivers' => [$caregivers[3]],
+            ],
+        ];
+
+        foreach ($careTeamMap as $mapping) {
+            /** @var User $patient */
+            $patient = $mapping['patient'];
+
+            /** @var User $doctor */
+            $doctor = $mapping['doctor'];
+
+            /** @var array<int, User> $assignedCaregivers */
+            $assignedCaregivers = $mapping['caregivers'];
+
             PatientAssignment::query()->create([
                 'patient_id' => $patient->id,
                 'member_id' => $doctor->id,
                 'assigned_by_id' => $admin->id,
-                'role' => 'Doctor',
+                'role' => UserRole::Doctor->value,
             ]);
 
-            PatientAssignment::query()->create([
-                'patient_id' => $patient->id,
-                'member_id' => $caregiver->id,
-                'assigned_by_id' => $admin->id,
-                'role' => 'Caregiver',
-            ]);
+            foreach ($assignedCaregivers as $caregiver) {
+                PatientAssignment::query()->create([
+                    'patient_id' => $patient->id,
+                    'member_id' => $caregiver->id,
+                    'assigned_by_id' => $admin->id,
+                    'role' => UserRole::Caregiver->value,
+                ]);
+            }
 
             $dispenser = Dispenser::factory()->create([
                 'patient_id' => $patient->id,
@@ -86,7 +134,7 @@ class DatabaseSeeder extends Seeder
                     'timezone' => 'Europe/Rome',
                 ]);
 
-                DoseLog::factory()->count(10)->create([
+                DoseLog::factory()->count(8)->create([
                     'patient_id' => $patient->id,
                     'dispenser_id' => $dispenser->id,
                     'therapy_plan_id' => $therapyPlan->id,
@@ -94,21 +142,15 @@ class DatabaseSeeder extends Seeder
                 ]);
             }
 
-            SensorLog::factory()->count(30)->create([
+            SensorLog::factory()->count(24)->create([
                 'patient_id' => $patient->id,
                 'dispenser_id' => $dispenser->id,
             ]);
 
-            Alert::factory()->count(4)->create([
+            Alert::factory()->count(3)->create([
                 'patient_id' => $patient->id,
                 'dispenser_id' => $dispenser->id,
             ]);
         }
-
-        User::factory()->patient()->create([
-            'name' => 'Paziente Demo',
-            'email' => 'patient@smartdispenser.local',
-            'password' => 'password',
-        ]);
     }
 }

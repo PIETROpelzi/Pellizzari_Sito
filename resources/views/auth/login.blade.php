@@ -16,13 +16,6 @@
             <p class="text-sm leading-6 text-slate-600">
                 Accedi al portale per gestire pazienti, prescrizioni digitali, telemetria ambientale e notifiche di sicurezza.
             </p>
-            <div class="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                <p class="font-semibold">Credenziali demo (seed):</p>
-                <p>admin@smartdispenser.local / password</p>
-                <p>doctor@smartdispenser.local / password</p>
-                <p>caregiver@smartdispenser.local / password</p>
-                <p>patient@smartdispenser.local / password</p>
-            </div>
         </section>
 
         <section class="panel">

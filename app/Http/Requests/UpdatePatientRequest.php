@@ -2,10 +2,11 @@
 
 namespace App\Http\Requests;
 
-use App\UserRole;
 use App\Models\User;
+use App\UserRole;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class UpdatePatientRequest extends FormRequest
@@ -27,6 +28,7 @@ class UpdatePatientRequest extends FormRequest
     {
         /** @var User $patient */
         $patient = $this->route('patient');
+        $isAdmin = $this->user()?->hasRole(UserRole::Admin) ?? false;
 
         return [
             'name' => ['required', 'string', 'max:255'],
@@ -36,10 +38,34 @@ class UpdatePatientRequest extends FormRequest
             'address' => ['nullable', 'string', 'max:255'],
             'date_of_birth' => ['nullable', 'date'],
             'is_active' => ['required', 'boolean'],
-            'doctor_ids' => ['nullable', 'array'],
-            'doctor_ids.*' => ['integer', 'exists:users,id'],
+            'doctor_ids' => [
+                Rule::requiredIf($isAdmin),
+                Rule::prohibitedIf(! $isAdmin),
+                'array',
+                'min:1',
+            ],
+            'doctor_ids.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('users', 'id')->where('role', UserRole::Doctor->value)->where('is_active', true),
+            ],
             'caregiver_ids' => ['nullable', 'array'],
-            'caregiver_ids.*' => ['integer', 'exists:users,id'],
+            'caregiver_ids.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('users', 'id')->where('role', UserRole::Caregiver->value)->where('is_active', true),
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'doctor_ids' => 'dottore assegnato',
+            'caregiver_ids' => 'familiari assegnati',
         ];
     }
 }

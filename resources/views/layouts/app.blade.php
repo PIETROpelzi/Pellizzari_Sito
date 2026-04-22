@@ -41,8 +41,14 @@
                         <a href="{{ route('sensor-logs.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('sensor-logs.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Log Sensori</a>
                         <a href="{{ route('alerts.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('alerts.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Alert</a>
 
+                        @if (auth()->user()->hasRole(\App\UserRole::Patient, \App\UserRole::Caregiver))
+                            <hr class="my-3 border-slate-200">
+                            <a href="{{ route('care-team.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('care-team.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Collegamenti</a>
+                        @endif
+
                         @if (auth()->user()->canManageClinicalData())
                             <hr class="my-3 border-slate-200">
+                            <a href="{{ route('user-management.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('user-management.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Gestione Utenti</a>
                             <a href="{{ route('patients.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('patients.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Pazienti</a>
                             <a href="{{ route('medicines.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('medicines.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Farmaci</a>
                             <a href="{{ route('therapy-plans.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('therapy-plans.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Piani Terapia</a>

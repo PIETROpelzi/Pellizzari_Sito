@@ -34,7 +34,8 @@ class MqttPublisher
             ->setPassword($password)
             ->setUseTls($useTls);
 
-        $topicBase = $dispenser->mqtt_base_topic ?: 'smart-dispenser/'.$dispenser->device_uid;
+        $topicRoot = trim((string) config('services.mqtt.topic_root', 'smart-dispenser'), '/');
+        $topicBase = $dispenser->mqtt_base_topic ?: $topicRoot.'/'.$dispenser->device_uid;
         $topic = $topicBase.'/commands/'.$command;
 
         try {
