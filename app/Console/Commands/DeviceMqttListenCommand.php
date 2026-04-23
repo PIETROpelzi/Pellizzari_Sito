@@ -10,6 +10,7 @@ use App\Services\DeviceEventIngestionService;
 use App\Services\MqttPublisher;
 use App\UserRole;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -22,22 +23,12 @@ use Throwable;
 
 class DeviceMqttListenCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
     protected $signature = 'device:mqtt-listen
                             {--topic-root= : Root topic MQTT (default da MQTT_TOPIC_ROOT)}
                             {--login-topic=esp32/login_request : Topic su cui ascoltare le richieste di login mobile}
                             {--schedule-topic=esp32/schedule_request : Topic su cui ascoltare le richieste di disposizione settimanale medicine}
                             {--max-seconds=0 : Arresta il listener dopo N secondi (0 = infinito)}';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
     protected $description = 'Ascolta eventi MQTT dei dispenser e li salva nel database applicativo';
 
     public function __construct(
@@ -47,16 +38,12 @@ class DeviceMqttListenCommand extends Command
         parent::__construct();
     }
 
-    /**
-     * Execute the console command.
-     */
     public function handle(): int
     {
         $host = (string) config('services.mqtt.host', '');
 
         if ($host === '') {
             $this->error('MQTT_HOST non configurato. Imposta il broker prima di avviare il listener.');
-
             return self::FAILURE;
         }
 
@@ -64,22 +51,21 @@ class DeviceMqttListenCommand extends Command
 
         if ($topicRoot === '') {
             $this->error('Topic root MQTT non valido.');
-
             return self::FAILURE;
         }
 
-        $telemetrySuffix  = trim((string) config('services.mqtt.topic_telemetry_suffix', 'events/telemetry'), '/');
-        $doseLogSuffix    = trim((string) config('services.mqtt.topic_dose_log_suffix', 'events/dose-log'), '/');
-        $statusSuffix     = trim((string) config('services.mqtt.topic_status_suffix', 'status'), '/');
-        $loginTopic       = (string) $this->option('login-topic');
-        $scheduleTopic    = (string) $this->option('schedule-topic');
+        $telemetrySuffix = trim((string) config('services.mqtt.topic_telemetry_suffix', 'events/telemetry'), '/');
+        $doseLogSuffix   = trim((string) config('services.mqtt.topic_dose_log_suffix', 'events/dose-log'), '/');
+        $statusSuffix    = trim((string) config('services.mqtt.topic_status_suffix', 'status'), '/');
+        $loginTopic      = (string) $this->option('login-topic');
+        $scheduleTopic   = (string) $this->option('schedule-topic');
 
-        $port         = (int)    config('services.mqtt.port', 1883);
+        $port         = (int)  config('services.mqtt.port', 1883);
         $clientId     = (string) config('services.mqtt.client_id', 'smart-dispenser-web');
-        $cleanSession = (bool)   config('services.mqtt.clean_session', true);
+        $cleanSession = (bool) config('services.mqtt.clean_session', true);
         $username     = config('services.mqtt.username');
         $password     = config('services.mqtt.password');
-        $useTls       = (bool)   config('services.mqtt.use_tls', false);
+        $useTls       = (bool) config('services.mqtt.use_tls', false);
         $maxSeconds   = max(0, (int) $this->option('max-seconds'));
 
         $mqtt = new MqttClient($host, $port, $clientId.'-listener-'.Str::lower(Str::random(8)));
@@ -93,48 +79,25 @@ class DeviceMqttListenCommand extends Command
             $mqtt->connect($connectionSettings, $cleanSession);
             $this->info('Connesso al broker MQTT '.$host.':'.$port);
 
-            // --- Topic dispenser ---
-            $this->subscribe(
-                mqtt: $mqtt,
-                topicFilter: $topicRoot.'/+/'.$telemetrySuffix,
-                handler: function (string $topic, string $message) use ($telemetrySuffix): void {
-                    $this->ingestTelemetryMessage($topic, $message, $telemetrySuffix);
-                },
-            );
+            $this->subscribe($mqtt, $topicRoot.'/+/'.$telemetrySuffix, function (string $topic, string $message) use ($telemetrySuffix): void {
+                $this->ingestTelemetryMessage($topic, $message, $telemetrySuffix);
+            });
 
-            $this->subscribe(
-                mqtt: $mqtt,
-                topicFilter: $topicRoot.'/+/'.$doseLogSuffix,
-                handler: function (string $topic, string $message) use ($doseLogSuffix): void {
-                    $this->ingestDoseLogMessage($topic, $message, $doseLogSuffix);
-                },
-            );
+            $this->subscribe($mqtt, $topicRoot.'/+/'.$doseLogSuffix, function (string $topic, string $message) use ($doseLogSuffix): void {
+                $this->ingestDoseLogMessage($topic, $message, $doseLogSuffix);
+            });
 
-            $this->subscribe(
-                mqtt: $mqtt,
-                topicFilter: $topicRoot.'/+/'.$statusSuffix,
-                handler: function (string $topic, string $message) use ($statusSuffix): void {
-                    $this->ingestStatusMessage($topic, $message, $statusSuffix);
-                },
-            );
+            $this->subscribe($mqtt, $topicRoot.'/+/'.$statusSuffix, function (string $topic, string $message) use ($statusSuffix): void {
+                $this->ingestStatusMessage($topic, $message, $statusSuffix);
+            });
 
-            // --- Topic login mobile (tecnica reply_to) ---
-            $this->subscribe(
-                mqtt: $mqtt,
-                topicFilter: $loginTopic,
-                handler: function (string $topic, string $message): void {
-                    $this->handleMobileLoginRequest($topic, $message);
-                },
-            );
+            $this->subscribe($mqtt, $loginTopic, function (string $topic, string $message): void {
+                $this->handleMobileLoginRequest($topic, $message);
+            });
 
-            // --- Topic disposizione settimanale medicine (tecnica reply_to) ---
-            $this->subscribe(
-                mqtt: $mqtt,
-                topicFilter: $scheduleTopic,
-                handler: function (string $topic, string $message): void {
-                    $this->handleWeeklyScheduleRequest($topic, $message);
-                },
-            );
+            $this->subscribe($mqtt, $scheduleTopic, function (string $topic, string $message): void {
+                $this->handleWeeklyScheduleRequest($topic, $message);
+            });
 
             if ($maxSeconds > 0) {
                 $mqtt->registerLoopEventHandler(function (MqttClient $client, float $elapsedTime) use ($maxSeconds): void {
@@ -151,7 +114,6 @@ class DeviceMqttListenCommand extends Command
             return self::SUCCESS;
         } catch (MqttClientException|Throwable $exception) {
             $this->error('Errore listener MQTT: '.$exception->getMessage());
-
             return self::FAILURE;
         } finally {
             try {
@@ -165,42 +127,45 @@ class DeviceMqttListenCommand extends Command
     }
 
     // =========================================================================
-    // Disposizione settimanale medicine via MQTT (tecnica reply_to)
+    // Disposizione 7 giorni di medicine via MQTT (tecnica reply_to)
     // =========================================================================
 
     /**
-     * Gestisce una richiesta di disposizione settimanale medicine.
+     * Gestisce una richiesta di disposizione medicine per i prossimi 7 giorni.
      *
      * Payload atteso:
      *   {
-     *     "device_uid": "ESP32-XXXX",
-     *     "reply_to": "esp32/schedule_response/ESP32-XXXX"
+     *     "device_uid": "ESP32-PILL-001",
+     *     "reply_to":   "esp32/schedule_response/ESP32-PILL-001"
      *   }
      *
-     * Risposta pubblicata sul topic reply_to (successo):
+     * Risposta pubblicata sul topic reply_to:
      *   {
      *     "success": true,
-     *     "patient_id": 3,
-     *     "plans": [
+     *     "patient_id": 13,
+     *     "days": [
      *       {
-     *         "therapy_plan_id": 1,
-     *         "medicine_name": "Aspirina",
-     *         "dose_amount": "1.00",
-     *         "dose_unit": "pill",
-     *         "starts_on": "2025-01-01",
-     *         "ends_on": "2025-06-30",
-     *         "instructions": "Da prendere a stomaco pieno",
-     *         "schedules": [
+     *         "date": "2026-04-23",
+     *         "day_name": "Wednesday",
+     *         "prescriptions": [
      *           {
-     *             "schedule_id": 1,
-     *             "scheduled_time": "08:00",
-     *             "week_days": [1, 3, 5]
+     *             "therapy_plan_id": 7,
+     *             "medicine_name":   "Aspirina",
+     *             "dose_amount":     "1.00",
+     *             "dose_unit":       "compressa",
+     *             "time":            "08:00:00",
+     *             "instructions":    "Da prendere a stomaco pieno."
      *           }
      *         ]
-     *       }
+     *       },
+     *       ...  (7 giorni totali, da oggi a oggi+6)
      *     ],
-     *     "replied_at": "2025-01-01T12:00:00+00:00"
+     *     "replied_at": "2026-04-23T10:00:00+00:00"
      *   }
+     *
+     * Logica week_days:
+     *   - array vuoto []  → il farmaco va preso OGNI giorno
+     *   - [1,2,3,4,5,6,7] → ISO weekday: 1=Lunedì … 7=Domenica
      *
      * Risposta in caso di errore:
      *   { "success": false, "error": "...", "replied_at": "..." }
@@ -210,7 +175,6 @@ class DeviceMqttListenCommand extends Command
         $this->line('[SCHEDULE] Richiesta ricevuta su '.$topic);
 
         $payload = $this->decodePayload($message, $topic);
-
         if ($payload === null) {
             return;
         }
@@ -225,11 +189,11 @@ class DeviceMqttListenCommand extends Command
             return;
         }
 
-        $validated  = $validator->validated();
-        $deviceUid  = (string) $validated['device_uid'];
-        $replyTo    = (string) $validated['reply_to'];
+        $validated = $validator->validated();
+        $deviceUid = (string) $validated['device_uid'];
+        $replyTo   = (string) $validated['reply_to'];
 
-        // Cerca il dispenser tramite device_uid
+        // 1. Trova il dispenser
         /** @var Dispenser|null $dispenser */
         $dispenser = Dispenser::query()
             ->where('device_uid', $deviceUid)
@@ -237,53 +201,84 @@ class DeviceMqttListenCommand extends Command
             ->first();
 
         if ($dispenser === null) {
-            $this->warn('[SCHEDULE] Nessun dispenser attivo trovato per device_uid: '.$deviceUid);
-
+            $this->warn('[SCHEDULE] Nessun dispenser attivo per device_uid: '.$deviceUid);
             $this->mqttPublisher->publishTo($replyTo, [
                 'success'    => false,
                 'error'      => 'Dispenser non trovato o non attivo.',
                 'replied_at' => now()->toIso8601String(),
             ]);
-
             return;
         }
 
-        // Recupera i piani terapia attivi del paziente con orari e medicine
+        // 2. Carica tutti i piani terapia attivi con schedules e medicine
         $plans = TherapyPlan::query()
             ->with(['medicine', 'schedules'])
             ->where('patient_id', $dispenser->patient_id)
             ->where('is_active', true)
             ->get();
 
-        // Costruisce la risposta strutturata
-        $plansData = $plans->map(function (TherapyPlan $plan): array {
-            $schedulesData = $plan->schedules->map(function ($schedule): array {
-                return [
-                    'schedule_id'    => $schedule->id,
-                    'scheduled_time' => $schedule->scheduled_time,
-                    'week_days'      => $schedule->week_days ?? [],
-                    'timezone'       => $schedule->timezone ?? 'UTC',
-                ];
-            })->values()->all();
+        // 3. Costruisce i 7 giorni (oggi → oggi+6)
+        $today   = Carbon::today();
+        $daysData = [];
 
-            return [
-                'therapy_plan_id' => $plan->id,
-                'medicine_name'   => $plan->medicine?->name ?? 'N/D',
-                'dose_amount'     => $plan->dose_amount,
-                'dose_unit'       => $plan->dose_unit,
-                'starts_on'       => $plan->starts_on?->toDateString(),
-                'ends_on'         => $plan->ends_on?->toDateString(),
-                'instructions'    => $plan->instructions,
-                'schedules'       => $schedulesData,
+        for ($offset = 0; $offset < 7; $offset++) {
+            $day           = $today->copy()->addDays($offset);
+            $isoWeekday    = $day->isoWeekday(); // 1=Lun … 7=Dom
+            $prescriptions = [];
+
+            foreach ($plans as $plan) {
+                // Verifica che il piano sia valido in questa data
+                if ($plan->starts_on->greaterThan($day)) {
+                    continue;
+                }
+                if ($plan->ends_on !== null && $plan->ends_on->lessThan($day)) {
+                    continue;
+                }
+
+                foreach ($plan->schedules as $schedule) {
+                    $weekDays = $schedule->week_days ?? [];
+
+                    // Array vuoto = ogni giorno; altrimenti controlla ISO weekday
+                    $activeTodayy = empty($weekDays) || in_array($isoWeekday, $weekDays, true);
+
+                    if (! $activeTodayy) {
+                        continue;
+                    }
+
+                    $prescriptions[] = [
+                        'therapy_plan_id' => $plan->id,
+                        'medicine_name'   => $plan->medicine?->name ?? 'N/D',
+                        'dose_amount'     => $plan->dose_amount,
+                        'dose_unit'       => $plan->dose_unit,
+                        'time'            => $schedule->scheduled_time,
+                        'instructions'    => $plan->instructions,
+                    ];
+                }
+            }
+
+            // Ordina le prescrizioni del giorno per orario crescente
+            usort($prescriptions, static fn (array $a, array $b): int => strcmp((string) $a['time'], (string) $b['time']));
+
+            $daysData[] = [
+                'date'          => $day->toDateString(),
+                'day_name'      => $day->englishDayOfWeek,
+                'prescriptions' => $prescriptions,
             ];
-        })->values()->all();
+        }
 
-        $this->info('[SCHEDULE] Invio disposizione settimanale per dispenser '.$deviceUid.' ('.$plans->count().' piani attivi)');
+        $totalPrescriptions = array_sum(array_map(static fn (array $d): int => count($d['prescriptions']), $daysData));
+
+        $this->info(sprintf(
+            '[SCHEDULE] Risposta inviata per %s — %d piani, %d somministrazioni nei prossimi 7 giorni',
+            $deviceUid,
+            $plans->count(),
+            $totalPrescriptions,
+        ));
 
         $this->mqttPublisher->publishTo($replyTo, [
             'success'    => true,
             'patient_id' => $dispenser->patient_id,
-            'plans'      => $plansData,
+            'days'       => $daysData,
             'replied_at' => now()->toIso8601String(),
         ]);
     }
@@ -292,22 +287,11 @@ class DeviceMqttListenCommand extends Command
     // Login mobile via MQTT (tecnica reply_to)
     // =========================================================================
 
-    /**
-     * Gestisce una richiesta di login pubblicata dall'app mobile.
-     *
-     * Payload atteso:
-     *   { "username": "...", "password": "...", "reply_to": "esp32/risposta/AndroidApp_..." }
-     *
-     * Risposta pubblicata sul topic reply_to:
-     *   { "success": true,  "user_id": 3, "name": "Mario Rossi", "role": "patient", "token": "..." }
-     *   { "success": false, "error": "Credenziali non valide." }
-     */
     private function handleMobileLoginRequest(string $topic, string $message): void
     {
         $this->line('[LOGIN] Richiesta ricevuta su '.$topic);
 
         $payload = $this->decodePayload($message, $topic);
-
         if ($payload === null) {
             return;
         }
@@ -326,53 +310,41 @@ class DeviceMqttListenCommand extends Command
         $validated = $validator->validated();
         $replyTo   = (string) $validated['reply_to'];
 
-        // Cerca l'utente per email o per nome (flessibile come da immagine)
         /** @var User|null $user */
         $user = User::query()
             ->where('email', $validated['username'])
             ->orWhere('name', $validated['username'])
             ->first();
 
-        // Verifica password
         if ($user === null || ! Hash::check($validated['password'], $user->password)) {
-            $this->warn('[LOGIN] Autenticazione fallita per username: '.$validated['username']);
-
+            $this->warn('[LOGIN] Autenticazione fallita per: '.$validated['username']);
             $this->mqttPublisher->publishTo($replyTo, [
                 'success'    => false,
                 'error'      => 'Credenziali non valide.',
                 'replied_at' => now()->toIso8601String(),
             ]);
-
             return;
         }
 
-        // Utente disattivato
         if (! $user->is_active) {
-            $this->warn('[LOGIN] Account disattivato per: '.$user->email);
-
+            $this->warn('[LOGIN] Account disattivato: '.$user->email);
             $this->mqttPublisher->publishTo($replyTo, [
                 'success'    => false,
                 'error'      => 'Account disattivato. Contatta il tuo medico.',
                 'replied_at' => now()->toIso8601String(),
             ]);
-
             return;
         }
 
-        // Aggiorna last_login_at
         $user->update(['last_login_at' => now()]);
 
-        // Recupera il dispenser del paziente (se è un paziente)
         $dispenserUid = null;
         if ($user->hasRole(UserRole::Patient)) {
-            $dispenser = Dispenser::query()
-                ->where('patient_id', $user->id)
-                ->where('is_active', true)
-                ->first();
+            $dispenser    = Dispenser::query()->where('patient_id', $user->id)->where('is_active', true)->first();
             $dispenserUid = $dispenser?->device_uid;
         }
 
-        $this->info('[LOGIN] Autenticazione riuscita per: '.$user->email.' (ruolo: '.$user->role?->value.')');
+        $this->info('[LOGIN] Autenticazione riuscita per: '.$user->email);
 
         $this->mqttPublisher->publishTo($replyTo, [
             'success'       => true,
@@ -395,12 +367,10 @@ class DeviceMqttListenCommand extends Command
 
         if ($dispenser === null) {
             $this->warn('Telemetria ignorata: nessun dispenser trovato per topic '.$topic);
-
             return;
         }
 
         $payload = $this->decodePayload($message, $topic);
-
         if ($payload === null) {
             return;
         }
@@ -415,7 +385,6 @@ class DeviceMqttListenCommand extends Command
 
         if ($validator->fails()) {
             $this->warn('Telemetria non valida su '.$topic.': '.$validator->errors()->first());
-
             return;
         }
 
@@ -427,7 +396,7 @@ class DeviceMqttListenCommand extends Command
         if ($result['sensor_log'] !== null) {
             $this->line('Telemetria acquisita da '.$dispenser->device_uid);
         } else {
-            $this->line('Telemetria ricevuta da '.$dispenser->device_uid.' (throttle: già salvato in questa ora, solo last_seen_at aggiornato)');
+            $this->line('Telemetria ricevuta da '.$dispenser->device_uid.' (throttle: già salvato in questa ora)');
         }
     }
 
@@ -437,12 +406,10 @@ class DeviceMqttListenCommand extends Command
 
         if ($dispenser === null) {
             $this->warn('Dose-log ignorato: nessun dispenser trovato per topic '.$topic);
-
             return;
         }
 
         $payload = $this->decodePayload($message, $topic);
-
         if ($payload === null) {
             return;
         }
@@ -468,7 +435,6 @@ class DeviceMqttListenCommand extends Command
 
         if ($validator->fails()) {
             $this->warn('Dose-log non valido su '.$topic.': '.$validator->errors()->first());
-
             return;
         }
 
@@ -486,24 +452,21 @@ class DeviceMqttListenCommand extends Command
 
         if ($dispenser === null) {
             $this->warn('Status ignorato: nessun dispenser trovato per topic '.$topic);
-
             return;
         }
 
         $payload = $this->decodePayload($message, $topic);
-
         if ($payload === null) {
             return;
         }
 
         $validator = Validator::make($payload, [
-            'is_online'   => ['nullable', 'boolean'],
-            'last_seen_at'=> ['nullable', 'date'],
+            'is_online'    => ['nullable', 'boolean'],
+            'last_seen_at' => ['nullable', 'date'],
         ]);
 
         if ($validator->fails()) {
             $this->warn('Status non valido su '.$topic.': '.$validator->errors()->first());
-
             return;
         }
 
@@ -519,9 +482,7 @@ class DeviceMqttListenCommand extends Command
     // Helpers
     // =========================================================================
 
-    /**
-     * @param  callable(string, string):void  $handler
-     */
+    /** @param callable(string, string):void $handler */
     private function subscribe(MqttClient $mqtt, string $topicFilter, callable $handler): void
     {
         $mqtt->subscribe(
@@ -535,39 +496,30 @@ class DeviceMqttListenCommand extends Command
         $this->line('Sottoscritto topic: '.$topicFilter);
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     * @return array<string, mixed>
-     */
+    /** @param array<string, mixed> $payload @return array<string, mixed> */
     private function normalizeTelemetryPayload(array $payload): array
     {
         if (! array_key_exists('temperature', $payload) && array_key_exists('temperatura', $payload)) {
             $payload['temperature'] = $payload['temperatura'];
         }
-
         if (! array_key_exists('humidity', $payload) && array_key_exists('umidita', $payload)) {
             $payload['humidity'] = $payload['umidita'];
         }
-
         return $payload;
     }
 
-    /**
-     * @return array<string, mixed>|null
-     */
+    /** @return array<string, mixed>|null */
     private function decodePayload(string $message, string $topic): ?array
     {
         try {
             $payload = json_decode($message, true, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException) {
             $this->warn('Payload JSON non valido su '.$topic);
-
             return null;
         }
 
         if (! is_array($payload)) {
             $this->warn('Payload non valido su '.$topic.': atteso oggetto JSON');
-
             return null;
         }
 
