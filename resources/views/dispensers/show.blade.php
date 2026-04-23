@@ -110,7 +110,27 @@
                         </form>
                     </div>
 
-                    {{-- E. Iniezione configurazione terapeutica (schedule_response) --}}
+                    {{-- E. Riproduci Brano --}}
+                    <div class="rounded-xl border border-purple-200 bg-purple-50 p-4">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-purple-700">🎵 Riproduci Brano</p>
+                        <p class="mt-1 text-xs text-purple-600">Invia al dispenser il numero del brano da riprodurre.</p>
+                        <form action="{{ route('dispensers.mqtt-command', $dispenser) }}" method="POST" class="mt-3 space-y-3">
+                            @csrf
+                            <input type="hidden" name="command" value="play_track">
+                            <div>
+                                <label class="text-xs text-purple-700" for="track_number">Numero brano</label>
+                                <input type="number" id="track_number" min="1" max="99" value="1"
+                                       class="form-input mt-1 text-xs">
+                            </div>
+                            <input type="hidden" name="payload" id="play_track_payload">
+                            <button type="submit" class="btn-primary text-xs w-full"
+                                    onclick="document.getElementById('play_track_payload').value=JSON.stringify({track:parseInt(document.getElementById('track_number').value)})">
+                                Invia play_track
+                            </button>
+                        </form>
+                    </div>
+
+                    {{-- F. Iniezione configurazione terapeutica (schedule_response) --}}
                     <div class="rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2">
                         <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">📅 Iniezione Schedule Terapeutico</p>
                         <p class="mt-1 text-xs text-blue-600">

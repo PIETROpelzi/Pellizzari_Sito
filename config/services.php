@@ -48,6 +48,13 @@ return [
         'topic_dose_log_suffix' => env('MQTT_TOPIC_DOSE_LOG_SUFFIX', 'events/dose-log'),
         'topic_status_suffix' => env('MQTT_TOPIC_STATUS_SUFFIX', 'status'),
         'commands' => [
+            'play_track' => [
+                'label' => 'Riproduci Brano',
+                'description' => 'Invia al dispenser il numero del brano da riprodurre.',
+                'payload' => [
+                    'track' => 1,
+                ],
+            ],
             'set_position' => [
                 'label' => 'Override posizione servo',
                 'description' => 'Sposta il servo a una posizione assoluta in ms (dead-reckoning). Range tipico: 500–4500 ms.',
