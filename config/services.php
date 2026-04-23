@@ -48,12 +48,29 @@ return [
         'topic_dose_log_suffix' => env('MQTT_TOPIC_DOSE_LOG_SUFFIX', 'events/dose-log'),
         'topic_status_suffix' => env('MQTT_TOPIC_STATUS_SUFFIX', 'status'),
         'commands' => [
+            'set_position' => [
+                'label' => 'Override posizione servo',
+                'description' => 'Sposta il servo a una posizione assoluta in ms (dead-reckoning). Range tipico: 500–4500 ms.',
+                'payload' => [
+                    'position_ms' => 3500,
+                ],
+            ],
             'dispense_now' => [
-                'label' => 'Eroga subito',
-                'description' => 'Eroga immediatamente una dose dal vano selezionato.',
+                'label' => 'Eroga subito (slot)',
+                'description' => 'Eroga immediatamente una dose dal vano selezionato (slot 0–6).',
                 'payload' => [
                     'slot' => 1,
                 ],
+            ],
+            'reset_home' => [
+                'label' => 'Homing (torna a zero)',
+                'description' => 'Riporta il servo alla posizione home (quota zero). Nessun payload richiesto.',
+                'payload' => [],
+            ],
+            'force_utc' => [
+                'label' => 'Sincronizza RTC',
+                'description' => 'Forza il trigger HTTP GET interno per riallineare l\'orologio RTC del firmware.',
+                'payload' => [],
             ],
             'pause_therapy' => [
                 'label' => 'Pausa terapia',
