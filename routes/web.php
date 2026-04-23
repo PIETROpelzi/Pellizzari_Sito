@@ -73,5 +73,9 @@ Route::middleware('auth')->group(function (): void {
 
             Route::post('/dispensers/{dispenser}/mqtt-command', MqttCommandController::class)
                 ->name('dispensers.mqtt-command');
+
+            // Invia manualmente la terapia al dispenser via MQTT
+            Route::post('/therapy-plans/{therapy_plan}/send-mqtt', [TherapyPlanController::class, 'sendViaMqtt'])
+                ->name('therapy-plans.send-mqtt');
         });
 });

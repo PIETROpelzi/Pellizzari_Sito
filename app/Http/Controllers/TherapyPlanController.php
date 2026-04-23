@@ -4,11 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreTherapyPlanRequest;
 use App\Http\Requests\UpdateTherapyPlanRequest;
+use App\Models\Dispenser;
 use App\Models\Medicine;
 use App\Models\TherapyPlan;
 use App\Models\User;
+use App\Services\MqttPublisher;
 use App\UserRole;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -50,7 +53,7 @@ class TherapyPlanController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(StoreTherapyPlanRequest $request): RedirectResponse
+    public function store(StoreTherapyPlanRequest $request, MqttPublisher $mqttPublisher): RedirectResponse
     {
         $validated = $request->validated();
 
@@ -76,9 +79,12 @@ class TherapyPlanController extends Controller
             return $therapyPlan;
         });
 
+        // Invia la terapia al dispenser del paziente via MQTT
+        $mqttSent = $this->publishTherapyToDispenser($therapyPlan, $mqttPublisher);
+
         return redirect()
             ->route('therapy-plans.show', $therapyPlan)
-            ->with('status', 'Piano terapeutico creato.');
+            ->with('status', 'Piano terapeutico creato.' . ($mqttSent ? ' Terapia inviata al dispenser via MQTT.' : ' Dispenser non trovato o broker MQTT non configurato.'));
     }
 
     /**
@@ -123,7 +129,7 @@ class TherapyPlanController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(UpdateTherapyPlanRequest $request, TherapyPlan $therapyPlan): RedirectResponse
+    public function update(UpdateTherapyPlanRequest $request, TherapyPlan $therapyPlan, MqttPublisher $mqttPublisher): RedirectResponse
     {
         $validated = $request->validated();
 
@@ -145,9 +151,15 @@ class TherapyPlanController extends Controller
             $this->syncSchedules($therapyPlan, $validated['schedules']);
         });
 
+        // Ricarica le relazioni aggiornate prima dell'invio MQTT
+        $therapyPlan->load(['medicine', 'schedules']);
+
+        // Invia la terapia aggiornata al dispenser del paziente via MQTT
+        $mqttSent = $this->publishTherapyToDispenser($therapyPlan, $mqttPublisher);
+
         return redirect()
             ->route('therapy-plans.show', $therapyPlan)
-            ->with('status', 'Piano terapeutico aggiornato.');
+            ->with('status', 'Piano terapeutico aggiornato.' . ($mqttSent ? ' Terapia inviata al dispenser via MQTT.' : ' Dispenser non trovato o broker MQTT non configurato.'));
     }
 
     /**
@@ -160,6 +172,65 @@ class TherapyPlanController extends Controller
         return redirect()
             ->route('therapy-plans.index')
             ->with('status', 'Piano terapeutico eliminato.');
+    }
+
+    /**
+     * Invia manualmente la terapia al dispenser via MQTT.
+     */
+    public function sendViaMqtt(TherapyPlan $therapyPlan, MqttPublisher $mqttPublisher): RedirectResponse
+    {
+        $therapyPlan->load(['medicine', 'schedules']);
+
+        $sent = $this->publishTherapyToDispenser($therapyPlan, $mqttPublisher);
+
+        return back()->with(
+            'status',
+            $sent
+                ? 'Terapia inviata al dispenser via MQTT.'
+                : 'Dispenser non trovato o broker MQTT non configurato.'
+        );
+    }
+
+    /**
+     * Costruisce il payload della terapia e lo pubblica sul dispenser del paziente.
+     */
+    private function publishTherapyToDispenser(TherapyPlan $therapyPlan, MqttPublisher $mqttPublisher): bool
+    {
+        /** @var Dispenser|null $dispenser */
+        $dispenser = Dispenser::query()
+            ->where('patient_id', $therapyPlan->patient_id)
+            ->where('is_active', true)
+            ->first();
+
+        if ($dispenser === null) {
+            return false;
+        }
+
+        $therapyPlan->loadMissing(['medicine', 'schedules']);
+
+        $schedules = $therapyPlan->schedules
+            ->pluck('scheduled_time')
+            ->map(static fn ($time): string => substr((string) $time, 0, 5))
+            ->values()
+            ->all();
+
+        $payload = [
+            'therapy_plan_id' => $therapyPlan->id,
+            'medicine'        => $therapyPlan->medicine?->name,
+            'dose_amount'     => (float) $therapyPlan->dose_amount,
+            'dose_unit'       => $therapyPlan->dose_unit,
+            'schedules'       => $schedules,
+            'starts_on'       => $therapyPlan->starts_on?->toDateString(),
+            'ends_on'         => $therapyPlan->ends_on?->toDateString(),
+            'is_active'       => $therapyPlan->is_active,
+            'instructions'    => $therapyPlan->instructions,
+        ];
+
+        return $mqttPublisher->publishCommand(
+            dispenser: $dispenser,
+            command: 'set_therapy',
+            payload: $payload,
+        );
     }
 
     /**

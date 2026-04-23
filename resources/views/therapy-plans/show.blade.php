@@ -4,8 +4,24 @@
     <section class="panel">
         <div class="panel-header flex items-center justify-between">
             <span>Piano #{{ $therapyPlan->id }}</span>
-            <a href="{{ route('therapy-plans.edit', $therapyPlan) }}" class="btn-secondary">Modifica</a>
+            <div class="flex items-center gap-2">
+                {{-- Pulsante re-invio manuale via MQTT --}}
+                <form action="{{ route('therapy-plans.send-mqtt', $therapyPlan) }}" method="POST">
+                    @csrf
+                    <button type="submit" class="btn-secondary text-xs">
+                        📡 Invia al Dispenser (MQTT)
+                    </button>
+                </form>
+                <a href="{{ route('therapy-plans.edit', $therapyPlan) }}" class="btn-secondary">Modifica</a>
+            </div>
         </div>
+
+        @if (session('status'))
+            <div class="mx-6 mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">
+                {{ session('status') }}
+            </div>
+        @endif
+
         <div class="panel-body grid grid-cols-1 gap-6 lg:grid-cols-3">
             <article class="rounded-xl border border-slate-200 p-4">
                 <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Dati Clinici</h3>
@@ -34,6 +50,24 @@
                     @endforeach
                 </ul>
             </article>
+        </div>
+
+        {{-- Anteprima payload MQTT --}}
+        <div class="panel-body pt-0">
+            <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Payload MQTT (set_therapy)</h3>
+            <pre class="overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-4 font-mono text-xs text-slate-700">{{
+                json_encode([
+                    'therapy_plan_id' => $therapyPlan->id,
+                    'medicine'        => $therapyPlan->medicine?->name,
+                    'dose_amount'     => (float) $therapyPlan->dose_amount,
+                    'dose_unit'       => $therapyPlan->dose_unit,
+                    'schedules'       => $therapyPlan->schedules->pluck('scheduled_time')->map(fn($t) => substr((string)$t, 0, 5))->values()->all(),
+                    'starts_on'       => $therapyPlan->starts_on?->toDateString(),
+                    'ends_on'         => $therapyPlan->ends_on?->toDateString(),
+                    'is_active'       => $therapyPlan->is_active,
+                    'instructions'    => $therapyPlan->instructions,
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+            }}</pre>
         </div>
 
         <div class="panel-body pt-0">
